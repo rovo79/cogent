@@ -23,12 +23,46 @@ export function isTsxToolUserMetadata(obj: unknown): obj is TsxToolUserMetadata 
 
 export function registerToolUserChatParticipant(context: vscode.ExtensionContext) {
     const handler: vscode.ChatRequestHandler = async (request: vscode.ChatRequest, chatContext: vscode.ChatContext, stream: vscode.ChatResponseStream, token: vscode.CancellationToken) => {
+        // First, show available models
+        const allModels = await vscode.lm.selectChatModels({});
+        stream.markdown(`📋 Available Models:\n`);
+        allModels.forEach(m => {
+            stream.markdown(`- ${m.name || m.family}\n` +
+                          `  - Max tokens: ${m.maxInputTokens}\n` +
+                          `  - Vendor: ${m.vendor}\n`);
+        });
+
+        // Show available tools
+        stream.markdown(`\n🛠️ Available Tools:\n`);
+        vscode.lm.tools.forEach(tool => {
+            stream.markdown(`- ${tool.name}\n` +
+                          `  - Description: ${tool.description}\n` +
+                          `  - Input Schema: ${JSON.stringify(tool.inputSchema, null, 2)}\n`);
+        });
+
+        // Then try to select our preferred model
         const MODEL_SELECTOR: vscode.LanguageModelChatSelector = { vendor: 'copilot', family: 'claude-3.5-sonnet' };
         let [model] = await vscode.lm.selectChatModels(MODEL_SELECTOR);
+
+        // Add diagnostic information about the selected model
+        if (model) {
+            stream.markdown(`\n🤖 Selected model:\n` +
+                          `- Model: ${model.name || model.family}\n` +
+                          `- Max tokens: ${model.maxInputTokens}\n` +
+                          `- Vendor: ${model.vendor}\n`);
+        }
+
         if (!model) {
             [model] = await vscode.lm.selectChatModels({ vendor: 'copilot', family: 'gpt-4o' });
             if (!model) {
-                stream.markdown("No language model available.")
+                stream.markdown("❌ No language model available.")
+                return;
+            } else {
+                // Log fallback model info
+                stream.markdown(`⚠️ Fallback to:\n` +
+                              `- Model: ${model.name || model.family}\n` +
+                              `- Max tokens: ${model.maxInputTokens}\n` +
+                              `- Vendor: ${model.vendor}\n`);
             }
         }
 
