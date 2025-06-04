@@ -1,6 +1,7 @@
 import { renderPrompt } from '@vscode/prompt-tsx';
 import * as vscode from 'vscode';
 import { ToolCallRound, ToolResultMetadata, ToolUserPrompt } from './toolsPrompt';
+import { Logger } from './components/Logger';
 
 export interface TsxToolUserMetadata {
     toolCallsMetadata: ToolCallsMetadata;
@@ -22,48 +23,139 @@ export function isTsxToolUserMetadata(obj: unknown): obj is TsxToolUserMetadata 
 }
 
 export function registerToolUserChatParticipant(context: vscode.ExtensionContext) {
+    const logger = Logger.getInstance();
+    logger.info('🔵 Tool participant registration starting...');
+    logger.info(`🔵 Chat API available: ${!!vscode.chat}`);
+    logger.info(`🔵 Context subscriptions count: ${context.subscriptions.length}`);
+
+    // Get debug configuration
+    const debugMode = vscode.workspace.getConfiguration('cogent').get('debugMode', false);
+
     const handler: vscode.ChatRequestHandler = async (request: vscode.ChatRequest, chatContext: vscode.ChatContext, stream: vscode.ChatResponseStream, token: vscode.CancellationToken) => {
-        // First, show available models
-        const allModels = await vscode.lm.selectChatModels({});
-        stream.markdown(`📋 Available Models:\n`);
-        allModels.forEach(m => {
-            stream.markdown(`- ${m.name || m.family}\n` +
-                          `  - Max tokens: ${m.maxInputTokens}\n` +
-                          `  - Vendor: ${m.vendor}\n`);
-        });
-
-        // Show available tools
-        stream.markdown(`\n🛠️ Available Tools:\n`);
-        vscode.lm.tools.forEach(tool => {
-            stream.markdown(`- ${tool.name}\n` +
-                          `  - Description: ${tool.description}\n` +
-                          `  - Input Schema: ${JSON.stringify(tool.inputSchema, null, 2)}\n`);
-        });
-
-        // Then try to select our preferred model
-        const MODEL_SELECTOR: vscode.LanguageModelChatSelector = { vendor: 'copilot', family: 'claude-3.5-sonnet' };
-        let [model] = await vscode.lm.selectChatModels(MODEL_SELECTOR);
-
-        // Add diagnostic information about the selected model
-        if (model) {
-            stream.markdown(`\n🤖 Selected model:\n` +
-                          `- Model: ${model.name || model.family}\n` +
-                          `- Max tokens: ${model.maxInputTokens}\n` +
-                          `- Vendor: ${model.vendor}\n`);
+        // Only show debug info if debugMode is enabled
+        if (debugMode) {
+            stream.markdown('🔍 Debug: Initializing chat handler...');
+            stream.markdown(`🔍 vscode.lm available: ${!!vscode.lm}`);
+            stream.markdown('🔵 Chat request handler invoked');
+            stream.markdown(`🔵 vscode.lm tools available: ${!!vscode.lm?.tools}`);
         }
 
-        if (!model) {
-            [model] = await vscode.lm.selectChatModels({ vendor: 'copilot', family: 'gpt-4o' });
-            if (!model) {
-                stream.markdown("❌ No language model available.")
-                return;
-            } else {
-                // Log fallback model info
-                stream.markdown(`⚠️ Fallback to:\n` +
-                              `- Model: ${model.name || model.family}\n` +
-                              `- Max tokens: ${model.maxInputTokens}\n` +
-                              `- Vendor: ${model.vendor}\n`);
+        // Try to select the best available model
+        let model: vscode.LanguageModelChat | undefined;
+        const preferredModels = [
+            { vendor: 'copilot', family: 'gpt-4.1' },
+            { vendor: 'copilot', family: 'gpt-4o' },
+            { vendor: 'copilot', family: 'gpt-4-turbo' },
+            { vendor: 'copilot', family: 'claude-3.5-sonnet' },
+            { vendor: 'copilot', family: 'o4-mini' },
+            { vendor: 'copilot', family: 'gemini-2.0-flash' },
+            { vendor: 'copilot', family: 'o3-mini' },
+            { vendor: 'copilot', family: 'o1' },
+            { vendor: 'copilot' },
+            {}  // Empty object as fallback to get any available model
+        ];
+
+        try {
+            // Try each preferred model in order
+            for (const modelPreference of preferredModels) {
+                try {
+                    const models = await vscode.lm.selectChatModels(modelPreference);
+                    if (models && models.length > 0) {
+                        model = models[0];
+                        stream.markdown(`🤖 Selected model:\n- Model: ${model.name || model.family}\n- Max tokens: ${model.maxInputTokens}\n- Vendor: ${model.vendor}`);
+                        break;
+                    }
+                } catch (err) {
+                    if (debugMode) {
+                        stream.markdown(`🔍 Debug: Failed to select model with preference ${JSON.stringify(modelPreference)}: ${err instanceof Error ? err.message : String(err)}`);
+                    }
+                    // Continue to next model preference
+                }
             }
+
+            if (!model) {
+                stream.markdown("❌ No suitable models found. Cogent requires access to language models like Claude or GPT to function.");
+                return;
+            }
+
+            // NOW test model compatibility AFTER model is selected
+            // Add a simple direct request first to check model compatibility
+            try {
+                if (debugMode) {
+                    stream.markdown(`🔬 Testing basic model compatibility...`);
+                }
+
+                // Now model is guaranteed to be defined
+                const testResponse = await model.sendRequest([
+                    {
+                        role: vscode.LanguageModelChatMessageRole.User,
+                        content: [new vscode.LanguageModelTextPart("Hello, are you working?")],
+                        name: "user" // Adding the required name property
+                    }
+                ], {}, token);
+
+                // If we get here, the basic model works
+                if (debugMode) {
+                    stream.markdown(`✅ Basic model compatibility test passed`);
+                }
+            } catch (error) {
+                // The model isn't working even for basic requests
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                stream.markdown(`⚠️ Model compatibility test failed: ${errorMessage}`);
+            }
+
+            // Remove the duplicate model selection code further down
+
+            // Rest of your handler code...
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            stream.markdown(`⚠️ Error selecting model: ${errorMessage}`);
+            return;
+        }
+
+        // First, check available models
+        try {
+            if (debugMode) {
+                stream.markdown('🔵 Checking available models...');
+            }
+            const allModels = await vscode.lm.selectChatModels({});
+
+            // Debug log to see allModels content
+            if (debugMode) {
+                stream.markdown(`🔵 Available models: ${JSON.stringify(allModels, null, 2)}`);
+
+                if (allModels && allModels.length > 0) {
+                    stream.markdown(`🔵 Found ${allModels.length} models`);
+                    // Stream the header first
+                    await stream.markdown(`📋 Available Models:`);
+
+                    // Stream each model info individually
+                    for (const m of allModels) {
+                        await stream.markdown(`- ${m.name || m.family}\n` +
+                                         `  - Max tokens: ${m.maxInputTokens}\n` +
+                                         `  - Vendor: ${m.vendor}`);
+                        // Add a small delay to ensure proper streaming order
+                        await new Promise(resolve => setTimeout(resolve, 50));
+                    }
+                }
+            }
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error : String(error);
+            logger.error("⚠️ Error checking available models");
+            logger.error(errorMessage);
+            if (debugMode) {
+                stream.markdown("⚠️ Error checking available models");
+            }
+        }
+
+        // Show available tools
+        if (debugMode) {
+            stream.markdown(`\n🛠️ Available Tools:\n`);
+            vscode.lm.tools.forEach(tool => {
+                stream.markdown(`- ${tool.name}\n` +
+                              `  - Description: ${tool.description}\n` +
+                              `  - Input Schema: ${JSON.stringify(tool.inputSchema, null, 2)}\n`);
+            });
         }
 
         const useFullWorkspace = vscode.workspace.getConfiguration('cogent').get('use_full_workspace', false);

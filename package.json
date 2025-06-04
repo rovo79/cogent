@@ -2,9 +2,16 @@
     "name": "cogent",
     "displayName": "Cogent",
     "description": "Cogent is a Copilot extension that gives it agenting capabilities like executing commands, editing and reading files, and more.",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "engines": {
         "vscode": "^1.95.0"
+    },
+    "capabilities": {
+        "ai": true,
+        "languageModels": {
+            "generation": true,
+            "tools": true
+        }
     },
     "categories": [
         "Other",
@@ -14,10 +21,14 @@
     "license": "MIT",
     "publisher": "kturung",
     "repository": {
-		"type": "git",
-		"url": "https://github.com/kturung/cogent"
-	},
-    "activationEvents": [],
+        "type": "git",
+        "url": "https://github.com/kturung/cogent"
+    },
+    "activationEvents": [
+        "onLanguage",
+        "onChat",
+        "onChat:cogent"
+    ],
     "main": "./out/extension.js",
     "contributes": {
         "configuration": {
@@ -65,7 +76,7 @@
                 },
                 "cogent.debug": {
                     "type": "boolean",
-                    "default": false,
+                    "default": true,
                     "description": "Enable debug logging in the output channel",
                     "order": 3
                 },
@@ -78,17 +89,20 @@
             }
         },
         "chatParticipants": [
-      {
-        "id": "cogent.assistant",
-        "name": "cogent",
-        "description": "AI-powered development assistant",
-        "isSticky": true
-      }
-    ],
+            {
+                "id": "cogent.assistant",
+                "name": "cogent",
+                "description": "AI-powered development assistant",
+                "isSticky": true
+            }
+        ],
         "languageModelTools": [
             {
                 "name": "cogent_writeFile",
-                "tags": ["files", "create"],
+                "tags": [
+                    "files",
+                    "create"
+                ],
                 "displayName": "Create New File",
                 "modelDescription": "Create a new file in the workspace with specified content",
                 "inputSchema": {
@@ -103,12 +117,18 @@
                             "description": "The full text content to write into the file"
                         }
                     },
-                    "required": ["path", "content"]
+                    "required": [
+                        "path",
+                        "content"
+                    ]
                 }
             },
             {
                 "name": "cogent_updateFile",
-                "tags": ["files", "update"],
+                "tags": [
+                    "files",
+                    "update"
+                ],
                 "displayName": "Update File",
                 "modelDescription": "Update an existing file in the workspace with new content",
                 "inputSchema": {
@@ -123,12 +143,18 @@
                             "description": "New content for the file"
                         }
                     },
-                    "required": ["path", "content"]
+                    "required": [
+                        "path",
+                        "content"
+                    ]
                 }
             },
             {
                 "name": "cogent_runCommand",
-                "tags": ["terminal", "command"],
+                "tags": [
+                    "terminal",
+                    "command"
+                ],
                 "displayName": "Run Command",
                 "modelDescription": "Execute a command in the VS Code terminal",
                 "inputSchema": {
@@ -139,12 +165,17 @@
                             "description": "Command to execute"
                         }
                     },
-                    "required": ["command"]
+                    "required": [
+                        "command"
+                    ]
                 }
             },
             {
                 "name": "cogent_readFile",
-                "tags": ["files", "read"],
+                "tags": [
+                    "files",
+                    "read"
+                ],
                 "displayName": "Read File",
                 "modelDescription": "Read the contents of multiple files in the workspace",
                 "inputSchema": {
@@ -159,12 +190,18 @@
                             "description": "Array of file paths to read"
                         }
                     },
-                    "required": ["paths"]
+                    "required": [
+                        "paths"
+                    ]
                 }
             },
             {
                 "name": "cogent_applyDiff",
-                "tags": ["files", "update", "diff"],
+                "tags": [
+                    "files",
+                    "update",
+                    "diff"
+                ],
                 "displayName": "Apply Diff",
                 "modelDescription": "This tool allows for precise, surgical replaces to files by specifying exactly what content to search for and what to replace it with",
                 "inputSchema": {
@@ -187,18 +224,29 @@
                             "description": "Line number where the search block ends"
                         }
                     },
-                    "required": ["path", "diff", "start_line", "end_line"]
+                    "required": [
+                        "path",
+                        "diff",
+                        "start_line",
+                        "end_line"
+                    ]
                 }
+            }
+        ],
+        "commands": [
+            {
+                "command": "cogent.checkModels",
+                "title": "Cogent: Check Available Models"
             }
         ]
     },
     "scripts": {
         "vscode:prepublish": "npm run compile",
-        "compile": "tsc -p ./",
-        "watch": "tsc -watch -p ./",
-        "pretest": "npm run compile && npm run lint",
+        "compile": "tsc -p ./tsconfig.json",
+        "watch": "tsc -watch -p ./tsconfig.json",
         "lint": "eslint src",
-        "test": "vscode-test"
+        "pretest": "npm run compile && npm run lint",
+        "test": "node ./out/test/runTest.js"
     },
     "dependencies": {
         "@vscode/prompt-tsx": "^0.3.0-alpha.12"
@@ -206,12 +254,12 @@
     "devDependencies": {
         "@types/node": "^20.17.10",
         "@types/vscode": "^1.95.0",
-        "@types/mocha": "^10.0.9",
         "@typescript-eslint/eslint-plugin": "^8.10.0",
         "@typescript-eslint/parser": "^8.7.0",
+        "@vscode/test-electron": "^2.4.1",
         "eslint": "^9.13.0",
-        "typescript": "^5.6.3",
-        "@vscode/test-cli": "^0.0.10",
-        "@vscode/test-electron": "^2.4.1"
+        "mocha": "^11.1.0",
+        "@types/mocha": "^10.0.10",
+        "typescript": "^5.8.2"
     }
 }

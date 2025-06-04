@@ -6,6 +6,12 @@ export class Logger {
 
     private constructor() {
         this.channel = vscode.window.createOutputChannel('Cogent', { log: true });
+        // Force show the channel on construction
+        this.channel.show(true);
+
+        // Log the debug configuration value
+        const debugEnabled = vscode.workspace.getConfiguration('cogent').get('debug');
+        this.channel.appendLine(`DEBUG CONFIG: ${debugEnabled}`);
     }
 
     static getInstance(): Logger {
@@ -13,6 +19,10 @@ export class Logger {
             Logger.instance = new Logger();
         }
         return Logger.instance;
+    }
+
+    private timestamp(): string {
+        return new Date().toISOString();
     }
 
     info(message: string): void {
@@ -32,8 +42,15 @@ export class Logger {
     }
 
     debug(message: string): void {
-        if (vscode.workspace.getConfiguration('cogent').get('debug', false)) {
-            this.channel.appendLine(`DEBUG: ${message}`);
+        // Default to true if workspace is not available
+        const debugEnabled = !vscode.workspace.workspaceFolders ?
+            true :
+            vscode.workspace.getConfiguration('cogent').get('debug', true);
+
+        if (debugEnabled) {
+            this.channel.appendLine(`[${this.timestamp()}] 🔍 DEBUG: ${message}`);
+            // Force show on debug messages to ensure visibility
+            this.channel.show(true);
         }
     }
 
