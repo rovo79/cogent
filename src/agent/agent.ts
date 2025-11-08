@@ -27,8 +27,8 @@ export async function runAgent(goal: string, options: AgentOptions): Promise<voi
         writeUserMessage: options.writeUserMessage,
         slots: new Map<string, unknown>(),
         policies: {
-            autoApproveTools: options.policies.autoApproveTools ?? new Set<string>(),
-            allowRisks: options.policies.allowRisks ?? {},
+            autoApproveTools: options.policies.autoApproveTools,
+            allowRisks: options.policies.allowRisks,
             sandbox: options.policies.sandbox,
         },
         onEvent: options.onEvent,
