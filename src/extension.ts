@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { registerToolUserChatParticipant } from './toolParticipant';
 import { FileReadTool, FileWriteTool, FileUpdateTool, CommandRunTool, ApplyDiffTool } from './tools';
+import { registerTool } from './mcp/registry';
+import { readFileTool } from './mcp/tools/files';
 import { DiffView } from './components/DiffView';
 import { Logger } from './components/Logger';
 
@@ -16,6 +18,9 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.lm.registerTool('cogent_runCommand', new CommandRunTool()),
         vscode.lm.registerTool('cogent_applyDiff', new ApplyDiffTool())
     );
+
+    // Populate internal MCP registry
+    registerTool(readFileTool);
     
     // Register the tool participant
     registerToolUserChatParticipant(context);
