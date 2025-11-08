@@ -36,6 +36,68 @@ This layout makes it easy to add new MCP tools for standard actions while delega
 - 🔒 **Human-in-the-Loop Controls** – approval checkpoints and diff previews ensure every write operation is reviewed.
 - 📝 **Telemetry & Audit Trail** – capture tool usage and script runs for debugging and observability.
 
+## 🎯 Prerequisites
+
+Before pairing with Cogent, make sure you have:
+
+- 💳 An active GitHub Copilot subscription
+- 📦 VS Code 1.95.0 or higher
+- 🤖 The GitHub Copilot Chat extension installed and enabled
+
+## 🚀 Installation
+
+### Local development
+
+1. Clone the repository and install dependencies
+   ```bash
+   npm install
+   ```
+2. Compile the extension
+   ```bash
+   npm run compile
+   ```
+3. Press <kbd>F5</kbd> in VS Code to launch a new Extension Development Host window with Cogent loaded
+
+### Packaging for distribution
+
+1. Install the VS Code Extension CLI if you have not already
+   ```bash
+   npm install -g @vscode/vsce
+   ```
+2. Create a distributable package
+   ```bash
+   vsce package
+   ```
+   This generates a `.vsix` you can share or publish.
+
+## ⚙️ Configuration
+
+Cogent adapts to different workspaces through a handful of configurable options.
+
+### Workspace awareness
+
+![use_full_workspace](assets/use-full-workspace.png)
+
+- When `use_full_workspace` is **true**, Cogent eagerly indexes your project (respecting `.gitignore`) to provide richer context.
+- When set to **false** (the default), Cogent loads files on demand—ideal for very large repositories.
+
+### Custom rules
+
+Create a `.cogentrules` file in your workspace root to share project-specific guidance with the agent:
+
+```plaintext
+# Example .cogentrules
+1. Always enable TypeScript strict mode
+2. Follow the Angular style guide
+3. Replace console.log with the shared logger
+```
+
+### Auto-approval safeguards
+
+![auto_approve_tools](assets/auto-approve-tools.png)
+
+Auto approval can streamline repetitive workflows, but it should be enabled sparingly. Cogent surfaces confirmation dialogs for file edits and terminal commands so you remain in control.
+
 ## ⚙️ Developing the Extension
 
 ### Prerequisites
@@ -55,14 +117,9 @@ npm run compile
 
 Launch the extension with `F5` (or `Run → Start Debugging`) inside VS Code. A new Extension Development Host window opens with Cogent loaded.
 
-### Packaging for Distribution
+### Packaging
 
-```bash
-npm install -g @vscode/vsce
-vsce package
-```
-
-The command emits a `.vsix` bundle you can share or publish.
+Follow the packaging steps in [🚀 Installation](#-installation) when you are ready to share a build. The resulting `.vsix` file can be sideloaded in VS Code or published to the Marketplace.
 
 ## 🧩 Extending Cogent
 
