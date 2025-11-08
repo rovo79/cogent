@@ -45,7 +45,13 @@ export const listDirectoryTool: Tool = {
     risk: 'read',
     preferredMode: 'MCP',
     async run(args, ctx) {
-        const root = args.path ? String(args.path) : ctx.cwd;
+        const userPath = args.path ? String(args.path) : '';
+        const workspaceRoot = path.resolve(ctx.cwd);
+        const root = path.resolve(ctx.cwd, userPath);
+        // Validate that root is within workspaceRoot
+        if (!root.startsWith(workspaceRoot + path.sep) && root !== workspaceRoot) {
+            throw new Error('Access denied: Path is outside the workspace.');
+        }
         const maxDepth = typeof args.depth === 'number' ? Math.max(0, Math.floor(Number(args.depth))) : 1;
         const MAX_RESULTS = 200;
         const results: Array<{ path: string; size: number }> = [];
