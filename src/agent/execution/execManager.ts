@@ -106,7 +106,7 @@ async function runStep(step: PlanStep, ctx: ExecContext, index: number): Promise
         case 'execCode': {
             if (ctx.policies.allowRisks.exec !== true) {
                 await ensureApproval(ctx, {
-                    reason: 'Execute Node.js snippet in sandbox',
+                    reason: `Execute code snippet${step.language ? ` (${step.language})` : ''} in sandbox`,
                     preview: truncate(step.code, 400),
                     risk: 'exec',
                 });
