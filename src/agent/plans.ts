@@ -76,7 +76,7 @@ export function validatePlan(plan: Plan): Plan {
                 break;
             }
             case 'execCode': {
-                if (step.language !== 'node') {
+                if (step.language !== 'node' && step.language !== 'shell') {
                     throw new PlanValidationError(`Step ${index} uses unsupported language ${step.language}`);
                 }
                 if (typeof step.code !== 'string' || step.code.trim().length === 0) {
