@@ -37,6 +37,7 @@ export async function runAgent(goal: string, options: AgentOptions): Promise<voi
         goal,
         contextSummary: truncateContextSummary(context, 4000),
         llm: options.llm,
+        cwd: options.cwd,
     });
 
     await runPlan(plan, {

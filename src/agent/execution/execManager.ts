@@ -45,7 +45,7 @@ export interface ExecContext {
 export async function runPlan(plan: Plan, ctx: ExecContext): Promise<void> {
     ctx.onEvent?.({ type: 'plan-started', plan });
     ctx.writeUserMessage(`Plan rationale: ${plan.rationale}`);
-    await recordAudit({ type: 'plan_started', goal: plan.goal, rationale: plan.rationale });
+    await recordAudit({ type: 'plan_started', goal: plan.goal, rationale: plan.rationale }, ctx.cwd);
 
     for (const [index, step] of plan.steps.entries()) {
         ctx.onEvent?.({ type: 'step-started', index, step });
@@ -63,13 +63,13 @@ export async function runPlan(plan: Plan, ctx: ExecContext): Promise<void> {
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             ctx.onEvent?.({ type: 'step-failed', index, step, error: message });
-            await recordAudit({ type: 'plan_step_failed', stepIndex: index, message });
+            await recordAudit({ type: 'plan_step_failed', stepIndex: index, message }, ctx.cwd);
             throw error;
         }
     }
 
     ctx.onEvent?.({ type: 'plan-completed', plan });
-    await recordAudit({ type: 'plan_completed', goal: plan.goal });
+    await recordAudit({ type: 'plan_completed', goal: plan.goal }, ctx.cwd);
 }
 
 async function runStep(step: PlanStep, ctx: ExecContext, index: number): Promise<unknown> {
@@ -96,7 +96,7 @@ async function runStep(step: PlanStep, ctx: ExecContext, index: number): Promise
             }
 
             ctx.writeUserMessage(`[${tool.risk.toUpperCase()}] Executing tool ${tool.name}`);
-            await recordAudit({ type: 'tool_call', tool: tool.name, args: step.args, stepIndex: index });
+            await recordAudit({ type: 'tool_call', tool: tool.name, args: step.args, stepIndex: index }, ctx.cwd);
             return tool.run(step.args, {
                 cwd: ctx.cwd,
                 env: ctx.env,
@@ -111,7 +111,7 @@ async function runStep(step: PlanStep, ctx: ExecContext, index: number): Promise
                     risk: 'exec',
                 });
             }
-            await recordAudit({ type: 'code_exec', lang: step.language, stepIndex: index });
+            await recordAudit({ type: 'code_exec', lang: step.language, stepIndex: index }, ctx.cwd);
             if (step.language === 'node') {
                 return runInNodeSandbox({
                     code: step.code,
@@ -153,7 +153,7 @@ async function ensureApproval(ctx: ExecContext, request: ApprovalRequest): Promi
         reason: request.reason,
         risk: request.risk,
         tool: request.toolName,
-    });
+    }, ctx.cwd);
     if (!approved) {
         throw new Error('User rejected operation');
     }

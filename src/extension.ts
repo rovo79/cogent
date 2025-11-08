@@ -182,4 +182,5 @@ function describeStep(step: PlanStep): string {
             const _exhaustive: never = step;
             return _exhaustive;
         }
+    }
 }

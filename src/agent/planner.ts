@@ -7,6 +7,7 @@ export interface PlannerOptions {
     goal: string;
     contextSummary: string;
     llm: (prompt: string) => Promise<string>;
+    cwd: string;
 }
 
 export async function makePlan(opts: PlannerOptions): Promise<Plan> {
@@ -22,7 +23,7 @@ export async function makePlan(opts: PlannerOptions): Promise<Plan> {
         type: 'planner_prompt',
         promptLength: prompt.length,
         responseLength: rawPlan.length,
-    });
+    }, opts.cwd);
 
     let plan: Plan;
     try {
