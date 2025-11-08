@@ -85,7 +85,7 @@ async function runStep(step: PlanStep, ctx: ExecContext, index: number): Promise
             }
 
             const riskAllowed = ctx.policies.allowRisks[tool.risk] === true;
-            if (toolRequiresApproval(tool) && !ctx.policies.autoApproveTools.has(tool.name) && !riskAllowed) {
+            if ((toolRequiresApproval(tool) && !riskAllowed) && !ctx.policies.autoApproveTools.has(tool.name)) {
                 const preview = tool.getApprovalPreview ? await tool.getApprovalPreview(step.args) : JSON.stringify(step.args);
                 await ensureApproval(ctx, {
                     reason: `Run tool ${tool.name}`,
