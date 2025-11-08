@@ -1,14 +1,16 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
-const AUDIT_FILE = path.join(process.cwd(), '.cogent', 'audit.log');
-
-async function ensureDirectory(): Promise<void> {
-    await fs.mkdir(path.dirname(AUDIT_FILE), { recursive: true });
+function getAuditFilePath(workspaceFolder: string): string {
+    return path.join(workspaceFolder, '.cogent', 'audit.log');
 }
 
-export async function recordAudit(event: Record<string, unknown>): Promise<void> {
-    await ensureDirectory();
+async function ensureDirectory(workspaceFolder: string): Promise<void> {
+    await fs.mkdir(path.join(workspaceFolder, '.cogent'), { recursive: true });
+}
+
+export async function recordAudit(event: Record<string, unknown>, workspaceFolder: string): Promise<void> {
+    await ensureDirectory(workspaceFolder);
     const line = `${new Date().toISOString()} ${JSON.stringify(event)}\n`;
-    await fs.appendFile(AUDIT_FILE, line, 'utf8');
+    await fs.appendFile(getAuditFilePath(workspaceFolder), line, 'utf8');
 }
