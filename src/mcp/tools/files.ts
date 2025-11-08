@@ -18,9 +18,9 @@ export const readFileTool: Tool = {
     risk: 'read',
     preferredMode: 'MCP',
     async run(args, ctx) {
-        const path = String(args.path);
-        ctx.writeUserMessage(`Reading file: ${path}`);
-        return fs.readFile(path, 'utf8');
+        const filePath = String(args.path);
+        ctx.writeUserMessage(`Reading file: ${filePath}`);
+        return fs.readFile(filePath, 'utf8');
     },
 };
 
