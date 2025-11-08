@@ -64,7 +64,7 @@ export const listDirectoryTool: Tool = {
                     continue;
                 }
                 const full = path.join(current, entry.name);
-                const relativeName = prefix ? `${prefix}/${entry.name}` : entry.name;
+                const relativeName = prefix ? path.join(prefix, entry.name) : entry.name;
                 if (entry.isDirectory()) {
                     await walk(full, depth - 1, relativeName);
                 } else {
