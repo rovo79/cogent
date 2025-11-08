@@ -1,0 +1,4 @@
+# Hotspot Report
+
+- src/agent/context.ts needs better summary metadata
+- src/agent/plans.ts missing token estimates
