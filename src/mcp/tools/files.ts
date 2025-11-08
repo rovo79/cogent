@@ -14,6 +14,7 @@ export const readFileTool: Tool = {
         ],
         returns: 'string',
     },
+    risk: 'read',
     preferredMode: 'MCP',
     async run(args, ctx) {
         const path = String(args.path);

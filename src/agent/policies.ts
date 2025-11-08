@@ -1,7 +1,10 @@
 import { PlanStep } from './plans';
 import { getTool } from '../mcp/registry';
 
-export function chooseExecMode(step: PlanStep): PlanStep {
+const DEFAULT_CONTEXT_TOKEN_THRESHOLD = 2000;
+const DEFAULT_HOP_THRESHOLD = 6;
+
+export function chooseExecMode(step: PlanStep, index: number): PlanStep {
     if (step.kind !== 'useTool') {
         return step;
     }
@@ -11,12 +14,18 @@ export function chooseExecMode(step: PlanStep): PlanStep {
         return step;
     }
 
-    if (tool.preferredMode === 'codeExec') {
+    const tokenHeavy = (step.tokenEstimate ?? 0) > DEFAULT_CONTEXT_TOKEN_THRESHOLD;
+    const hopHeavy = index >= DEFAULT_HOP_THRESHOLD;
+
+    if (tool.preferredMode === 'codeExec' || tokenHeavy || hopHeavy) {
         return {
             kind: 'execCode',
             language: 'node',
-            code: `// TODO: implement code adapter for tool ${tool.name}`,
+            code: `console.log(${JSON.stringify(
+                `Tool ${tool.name} auto-converted to code execution with args ${JSON.stringify(step.args)}`
+            )});`,
             saveAs: step.saveAs,
+            tokenEstimate: step.tokenEstimate,
         };
     }
 

@@ -24,6 +24,6 @@ export async function makePlan(opts: PlannerOptions): Promise<Plan> {
         throw new Error(`Failed to parse plan JSON: ${(error as Error).message}`);
     }
 
-    plan.steps = plan.steps.map((step) => chooseExecMode(step));
+    plan.steps = plan.steps.map((step, index) => chooseExecMode(step, index));
     return plan;
 }

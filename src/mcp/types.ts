@@ -9,6 +9,8 @@ export type ToolIO = {
     returns: string;
 };
 
+export type ToolRisk = 'read' | 'write' | 'exec' | 'net';
+
 export interface ToolContext {
     cwd: string;
     env: Record<string, string>;
@@ -19,6 +21,7 @@ export interface Tool {
     name: string;
     description: string;
     io: ToolIO;
+    risk: ToolRisk;
     preferredMode?: 'MCP' | 'codeExec';
     run: (args: Record<string, unknown>, ctx: ToolContext) => Promise<unknown>;
 }

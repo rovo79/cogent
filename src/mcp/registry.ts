@@ -9,3 +9,7 @@ export const registerTool = (tool: Tool): void => {
 export const getTool = (name: string): Tool | undefined => tools.get(name);
 
 export const listTools = (): Tool[] => Array.from(tools.values());
+
+export const resetRegistry = (): void => {
+    tools.clear();
+};
