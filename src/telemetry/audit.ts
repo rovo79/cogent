@@ -1,16 +1,24 @@
 import * as fs from 'fs/promises';
+import * as os from 'os';
 import * as path from 'path';
 
-function getAuditFilePath(workspaceFolder: string): string {
-    return path.join(workspaceFolder, '.cogent', 'audit.log');
+const AUDIT_DIRECTORY = process.env.COGENT_AUDIT_DIR ?? path.join(os.homedir(), '.cogent');
+const AUDIT_FILE = path.join(AUDIT_DIRECTORY, 'audit.log');
+let warnedAboutFailure = false;
+
+async function ensureDirectory(): Promise<void> {
+    await fs.mkdir(AUDIT_DIRECTORY, { recursive: true });
 }
 
-async function ensureDirectory(workspaceFolder: string): Promise<void> {
-    await fs.mkdir(path.join(workspaceFolder, '.cogent'), { recursive: true });
-}
-
-export async function recordAudit(event: Record<string, unknown>, workspaceFolder: string): Promise<void> {
-    await ensureDirectory(workspaceFolder);
+export async function recordAudit(event: Record<string, unknown>): Promise<void> {
     const line = `${new Date().toISOString()} ${JSON.stringify(event)}\n`;
-    await fs.appendFile(getAuditFilePath(workspaceFolder), line, 'utf8');
+    try {
+        await ensureDirectory();
+        await fs.appendFile(AUDIT_FILE, line, 'utf8');
+    } catch (error) {
+        if (!warnedAboutFailure) {
+            warnedAboutFailure = true;
+            console.warn(`Failed to record audit event: ${(error as Error).message}`);
+        }
+    }
 }

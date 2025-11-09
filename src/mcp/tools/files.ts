@@ -2,6 +2,27 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { Tool } from '../types';
 
+async function resolveWorkspacePath(
+    cwd: string,
+    target: string,
+): Promise<{ absolute: string; relative: string }> {
+    const normalizedTarget = target.trim();
+    const workspaceRoot = await fs.realpath(cwd);
+    const absolutePath = path.resolve(cwd, normalizedTarget);
+    const resolvedTarget = await fs.realpath(absolutePath);
+    const relativePath = path.relative(workspaceRoot, resolvedTarget);
+
+    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+        throw new Error(`Path ${normalizedTarget} escapes the workspace root`);
+    }
+
+    return { absolute: resolvedTarget, relative: toPosix(relativePath || '.') };
+}
+
+function toPosix(value: string): string {
+    return value.split(path.sep).join(path.posix.sep);
+}
+
 export const readFileTool: Tool = {
     name: 'read_file',
     description: 'Read file contents as text',
@@ -18,9 +39,10 @@ export const readFileTool: Tool = {
     risk: 'read',
     preferredMode: 'MCP',
     async run(args, ctx) {
-        const filePath = String(args.path);
-        ctx.writeUserMessage(`Reading file: ${filePath}`);
-        return fs.readFile(filePath, 'utf8');
+        const inputPath = typeof args.path === 'string' ? args.path : String(args.path);
+        const { absolute, relative } = await resolveWorkspacePath(ctx.cwd, inputPath);
+        ctx.writeUserMessage(`Reading file: ${relative}`);
+        return fs.readFile(absolute, 'utf8');
     },
 };
 
@@ -45,17 +67,12 @@ export const listDirectoryTool: Tool = {
     risk: 'read',
     preferredMode: 'MCP',
     async run(args, ctx) {
-        const userPath = args.path ? String(args.path) : '';
-        const workspaceRoot = path.resolve(ctx.cwd);
-        const root = path.resolve(ctx.cwd, userPath);
-        // Validate that root is within workspaceRoot
-        if (!root.startsWith(workspaceRoot + path.sep) && root !== workspaceRoot) {
-            throw new Error('Access denied: Path is outside the workspace.');
-        }
+        const target = args.path ? String(args.path) : '.';
+        const { absolute: root, relative } = await resolveWorkspacePath(ctx.cwd, target);
         const maxDepth = typeof args.depth === 'number' ? Math.max(0, Math.floor(Number(args.depth))) : 1;
         const MAX_RESULTS = 200;
         const results: Array<{ path: string; size: number }> = [];
-        ctx.writeUserMessage(`Listing directory ${root} (depth ${maxDepth})`);
+        ctx.writeUserMessage(`Listing directory ${relative} (depth ${maxDepth})`);
 
         async function walk(current: string, depth: number, prefix = ''): Promise<void> {
             if (depth < 0) {
@@ -69,8 +86,12 @@ export const listDirectoryTool: Tool = {
                 if (entry.name.startsWith('.git')) {
                     continue;
                 }
+                if (entry.isSymbolicLink()) {
+                    continue;
+                }
                 const full = path.join(current, entry.name);
-                const relativeName = prefix ? path.join(prefix, entry.name) : entry.name;
+                const nextRelative = prefix ? path.join(prefix, entry.name) : entry.name;
+                const relativeName = toPosix(nextRelative);
                 if (entry.isDirectory()) {
                     await walk(full, depth - 1, relativeName);
                 } else {
@@ -87,7 +108,7 @@ export const listDirectoryTool: Tool = {
             }
         }
 
-        await walk(root, maxDepth);
+        await walk(root, maxDepth, relative === '.' ? '' : relative);
         return results;
     },
 };

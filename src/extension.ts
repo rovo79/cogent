@@ -178,8 +178,7 @@ function describeStep(step: PlanStep): string {
             return `request approval: ${step.reason}`;
         case 'summarize':
             return `summarize inputs (${step.inputs.length})`;
-        default: {
-            const _exhaustive: never = step;
-            return _exhaustive;
-        }
+        default:
+            return 'unknown step';
+    }
 }

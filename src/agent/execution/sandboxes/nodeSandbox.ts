@@ -32,19 +32,11 @@ export async function runInNodeSandbox(options: NodeSandboxOptions): Promise<Nod
     const scriptPath = path.join(tempDir, `${randomUUID()}.mjs`);
     await fs.writeFile(scriptPath, options.code, 'utf8');
 
-    // Whitelist of safe environment variables to pass to the sandbox
-    const SAFE_ENV_VARS = ['PATH', 'HOME', 'TMPDIR', 'TEMP', 'USER', 'SHELL', 'LANG', 'NODE_PATH'];
-    const filteredEnv: Record<string, string> = {};
-    for (const key of SAFE_ENV_VARS) {
-        if (process.env[key] !== undefined) {
-            filteredEnv[key] = process.env[key] as string;
-        }
-    }
     return new Promise<NodeSandboxResult>((resolve, reject) => {
         const args = [`--max-old-space-size=${options.memoryLimitMb}`, scriptPath];
         const child = spawn('node', args, {
             cwd: options.cwd,
-            env: { ...filteredEnv, ...options.env },
+            env: { ...process.env, ...options.env },
             stdio: ['ignore', 'pipe', 'pipe'],
         });
 
