@@ -32,7 +32,8 @@ export function registerToolUserChatParticipant(context: vscode.ExtensionContext
             }
         }
 
-        const useFullWorkspace = vscode.workspace.getConfiguration('cogent').get('use_full_workspace', false);
+        const config = vscode.workspace.getConfiguration('cogent');
+        const useFullWorkspace = config.get('useFullWorkspace', config.get('use_full_workspace', false));
         const tools = vscode.lm.tools.filter(tool =>
             tool.name.startsWith('cogent_') &&
             (!useFullWorkspace || tool.name !== 'cogent_readFile')

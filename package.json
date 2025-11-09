@@ -17,7 +17,10 @@
 		"type": "git",
 		"url": "https://github.com/kturung/cogent"
 	},
-    "activationEvents": [],
+    "activationEvents": [
+        "onCommand:cogent.runPlan",
+        "onChatParticipant:cogent.assistant"
+    ],
     "main": "./out/extension.js",
     "contributes": {
         "configuration": {
@@ -27,7 +30,58 @@
                     "type": "boolean",
                     "default": false,
                     "description": "Include full workspace content in the initial prompt. If disabled, files will be read on demand.\n\n Note: Not recommended for large workspaces.",
-                    "order": 1
+                    "order": 1,
+                    "deprecationMessage": "Use cogent.useFullWorkspace instead."
+                },
+                "cogent.useFullWorkspace": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "If enabled, the agent loads a larger slice of the workspace context for planning.",
+                    "order": 2
+                },
+                "cogent.autoApprove": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "List of internal tool names that may run without approval prompts.",
+                    "order": 3
+                },
+                "cogent.exec.timeoutMs": {
+                    "type": "number",
+                    "default": 120000,
+                    "description": "Maximum runtime in milliseconds for sandboxed code execution.",
+                    "order": 4,
+                    "minimum": 1000
+                },
+                "cogent.exec.memoryMb": {
+                    "type": "number",
+                    "default": 512,
+                    "description": "Maximum memory allocation for sandboxed Node execution (in megabytes).",
+                    "order": 5,
+                    "minimum": 128
+                },
+                "cogent.exec.allowedNodeModules": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": ["fs", "path", "os", "crypto", "util"],
+                    "description": "Allowlist of Node.js builtin modules accessible inside the sandbox.",
+                    "order": 6
+                },
+                "cogent.tools.allowShell": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Permit execution-class tools (shell, scripts) without blocking.",
+                    "order": 7
+                },
+                "cogent.tools.netAllowed": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Allow tools that require network access.",
+                    "order": 8
                 },
                 "cogent.autoConfirmTools": {
                     "type": "object",
@@ -61,22 +115,29 @@
                         "applyDiff": false
                     },
                     "description": "Configure which tools should auto-confirm their operations without showing confirmation dialog",
-                    "order": 2
+                    "order": 9
                 },
                 "cogent.debug": {
                     "type": "boolean",
                     "default": false,
                     "description": "Enable debug logging in the output channel",
-                    "order": 3
+                    "order": 10
                 },
                 "cogent.commandTimeout": {
                     "type": "number",
                     "default": 45,
                     "description": "Timeout in seconds for terminal commands",
-                    "order": 4
+                    "order": 11
                 }
             }
         },
+        "commands": [
+            {
+                "command": "cogent.runPlan",
+                "title": "Cogent: Run Agent Plan",
+                "category": "Cogent"
+            }
+        ],
         "chatParticipants": [
       {
         "id": "cogent.assistant",
