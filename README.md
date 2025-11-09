@@ -1,50 +1,61 @@
-# 🚀 Cogent: Hybrid-Agent VS Code Copilot Companion
+# 🚀 Cogent: Your Agentic AI-Powered Coding Companion
 
-Cogent is a GitHub Copilot chat extension that turns your editor into an **agentic co-developer**. The project now ships with a hybrid architecture that blends MCP-style tools for predictable workspace operations with a sandboxed code-execution layer for heavier analysis and automation. This README explains how the pieces fit together and how to get started hacking on the extension.
+> "Because rubber duck debugging is better with a duck that talks back!"
 
 ![Cogent Demo](assets/cogent.gif)
 
+Cogent is an agentic GitHub Copilot VS Code chat extension that transforms your coding environment into an autonomous development powerhouse. Think of it as having a brilliant (and slightly nerdy) AI agent who understands your code *and* can take actions while keeping you in control. It's your witty companion that makes coding feel like pair programming with a super-smart friend who never needs coffee breaks!
+
+<div align="center">
+  <strong>Plan ➜ Act ➜ Observe ➜ Revise</strong><br />
+  <em>All without leaving your editor.</em>
+</div>
+
+---
+
 ## 🧭 Architecture Overview
+
+Cogent now ships with a hybrid runtime that blends a lightweight MCP-style tool registry with a sandboxed code-execution layer. The planner chooses whichever path keeps token usage low while still letting the agent perform complex analysis.
 
 ```
 LLM  ↔  Agent Orchestrator
-           ↓
-      Planner / Spec Interpreter
-           ↓
-   ┌────────┴─────────┐
-   │                  │
+          ↓
+     Planner / Spec Interpreter
+          ↓
+  ┌────────┴─────────┐
+  │                  │
 MCP Tool Layer   Code-Execution Layer
-   │                  │
+  │                  │
 Workspace APIs   Sandboxed Node/Shell tasks
 ```
 
-- **Planner & Plans (`src/agent/planner.ts`, `src/agent/plans.ts`)** – the LLM produces structured plans that describe tool calls, code execution steps, and approval checkpoints.
-- **Execution Manager (`src/agent/execution/execManager.ts`)** – walks the plan, routing steps to registered MCP tools or to sandboxed scripts.
-- **MCP Registry (`src/mcp/registry.ts`)** – lightweight tool registration API with metadata like preferred execution mode.
-- **Node Sandbox (`src/agent/execution/sandboxes/nodeSandbox.ts`)** – runs generated scripts with resource guardrails so complex analysis happens off-model.
-- **Context & Memory (`src/agent/context.ts`, `src/agent/memory.ts`)** – collect workspace signals for prompts and persist decisions between runs.
-- **UI & Telemetry (`src/ui/approvals.ts`, `src/ui/diffs.ts`, `src/telemetry/*`)** – provide approval hooks, diff previews, and audit trails to keep operators in control.
+- **Planner & Plans (`src/agent/planner.ts`, `src/agent/plans.ts`)** – the LLM emits structured steps (`useTool`, `execCode`, `askApproval`, `summarize`) that are validated before execution.
+- **Execution Manager (`src/agent/execution/execManager.ts`)** – walks the plan, routes steps to tools or sandboxed scripts, records telemetry, and collects results for later steps.
+- **MCP Registry (`src/mcp/registry.ts`)** – a thin registry that tracks risk metadata, approval policies, and preferred execution modes for each tool.
+- **Node Sandbox (`src/agent/execution/sandboxes/nodeSandbox.ts`)** – runs generated scripts with module allowlists, timeouts, memory caps, and output truncation so heavy logic stays outside the prompt.
+- **Context & Memory (`src/agent/context.ts`, `src/agent/memory.ts`)** – gather concise workspace signals (changed files, git state, project hints) and persist lightweight project memory under `.cogent/`.
+- **UI & Telemetry (`src/ui/approvals.ts`, `src/ui/diffs.ts`, `src/telemetry/*`)** – surface approval modals, diff previews, and audit trails to keep humans in control.
 
-This layout makes it easy to add new MCP tools for standard actions while delegating bespoke logic to the execution layer without bloating LLM prompts.
+This layout keeps routine operations fast through MCP tools while reserving code execution for complex, multi-file reasoning without bloating the context window.
 
-## ✨ Key Capabilities
+## ✨ What Cogent Can Do
 
-- 🤖 **Autonomous Planning** – the agent drafts multi-step plans, switching between tools and code execution as needed.
-- 🛠️ **Tool Registry** – register workspace-aware tools (file I/O, git, tests) once and reuse them across plans.
-- 🧪 **Sandboxed Code Exec** – run Node snippets for heavy lifting (dependency graphs, refactors, metrics) without crowding the context window.
-- 🧠 **Project Context Summaries** – gather lightweight workspace metadata for better prompts without leaking entire files.
-- 🔒 **Human-in-the-Loop Controls** – approval checkpoints and diff previews ensure every write operation is reviewed.
-- 📝 **Telemetry & Audit Trail** – capture tool usage and script runs for debugging and observability.
+- 🤖 **Autonomous Planning** – draft multi-step plans that mix tools and sandboxed scripts.
+- 🛠️ **Tool Registry** – register workspace-aware tools (file I/O, git, tests) once and reuse them across plans or direct chat interactions.
+- 🧪 **Sandboxed Code Exec** – run Node snippets for dependency graphs, refactors, or metrics while keeping prompts lean.
+- 🧠 **Project Context Summaries** – capture filenames, hashes, git status, and key project signals without dumping entire files into prompts.
+- 🔒 **Human-in-the-Loop Controls** – enforce approvals for risky steps and show diffs before writes land on disk.
+- 📝 **Telemetry & Audit Trail** – log every plan, tool call, and script run for later review.
 
-## ⚙️ Developing the Extension
+## ⚙️ Development Setup
 
 ### Prerequisites
 
 - VS Code 1.95.0 or newer
-- GitHub Copilot Chat extension and an active Copilot subscription
-- Node 18+
+- GitHub Copilot Chat extension + an active Copilot subscription
+- Node.js 18+
 
-### Local Setup
+### Install & Build
 
 ```bash
 git clone https://github.com/<you>/cogent.git
@@ -53,7 +64,7 @@ npm install
 npm run compile
 ```
 
-Launch the extension with `F5` (or `Run → Start Debugging`) inside VS Code. A new Extension Development Host window opens with Cogent loaded.
+Launch the extension with `F5` (or **Run → Start Debugging**) inside VS Code. A new Extension Development Host window will open with Cogent loaded.
 
 ### Packaging for Distribution
 
@@ -62,42 +73,54 @@ npm install -g @vscode/vsce
 vsce package
 ```
 
-The command emits a `.vsix` bundle you can share or publish.
+This emits a `.vsix` bundle you can share or publish.
+
+## 🧑‍💻 Using Cogent in VS Code
+
+1. Open Copilot Chat and address Cogent with `@Cogent` as usual.
+2. Or trigger the **Cogent: Run Agent Plan** command (Command Palette) to provide a free-form goal.
+3. Cogent builds a plan, streams each step to the "Cogent Agent" output channel, and pauses for approvals before running risky actions.
+4. Review diffs or command previews in the approval modal, approve or reject, and watch execution continue.
+5. Inspect `.cogent/audit.log` if you need a historical trace of what happened.
 
 ## 🧩 Extending Cogent
 
 ### Adding a Tool
 
-1. Create a tool file under `src/mcp/tools/` that exports a `Tool` implementation.
-2. Register it in `src/extension.ts` using `registerTool(...)`.
-3. Optionally set `preferredMode` to hint when the planner should convert the call into a code-execution step.
+1. Create a tool implementation under `src/mcp/tools/` exporting the `Tool` interface.
+2. Register it inside `src/extension.ts` with `registerTool(...)`.
+3. Supply `risk`, `preferredMode`, and optional `getApprovalPreview` metadata so the planner and approval flow behave correctly.
 
-### Enabling Code-Execution Workflows
+### Customising Planner Policies
 
-- Use `execCode` steps in plans to offload longer pipelines to the sandbox (see `PlanStep` in `src/agent/plans.ts`).
-- Update `chooseExecMode` in `src/agent/policies.ts` to auto-convert specific tools to code execution when they exceed token or hop thresholds.
-- Sandbox runners live in `src/agent/execution/sandboxes/`; add shells or languages as needed while respecting resource limits.
+- Modify `chooseExecMode` (`src/agent/policies.ts`) to auto-switch certain tools to sandboxed execution when steps would be too costly in tokens.
+- Update the planner prompt in `src/agent/planner.ts` with new guardrails or constraints.
+- Introduce new `PlanStep` variants in `src/agent/plans.ts` when you need richer orchestration (remember to extend the validator and execution manager).
 
-### Memory and Context
+### Enhancing Context & Memory
 
-- `buildContextSummary` collects project snapshots (changed files, git branch, signals) that are safe to inject into prompts.
-- `MemoryStore` provides simple persistence for preferences or decisions under `.cogent/`.
+- Tune `ContextSummaryOptions` passed from `runAgent` to control how many files or hashes are collected.
+- Store project preferences or decisions in `MemoryStore` so Cogent adapts across sessions.
 
-## 🧑‍💻 Using Cogent in VS Code
+## ⚙️ Configuration Options
 
-1. Open Copilot Chat and address Cogent with `@Cogent`.
-2. Describe your goal. The agent will draft a plan summarising intended tool invocations and scripts.
-3. Review approvals for file edits or terminal commands. Cogent always waits for confirmation before risky actions.
-4. Inspect telemetry logs under `.cogent/audit.log` when you need to trace behaviour.
+All settings live under the `cogent` namespace (see `package.json`). Highlights:
+
+- `cogent.useFullWorkspace` – widen the default context summary limits.
+- `cogent.autoApprove` – allowlist tool names that may bypass approval prompts.
+- `cogent.exec.*` – adjust sandbox timeouts, memory caps, and allowed Node modules.
+- `cogent.tools.allowShell` / `cogent.tools.netAllowed` – enable execution or network-risky operations.
+
+Legacy `cogent.use_full_workspace` remains for backward compatibility but is marked as deprecated.
 
 ## 🤝 Contributing
 
-We welcome improvements! Please open issues or pull requests if you have suggestions for planner prompts, new tools, sandbox improvements, or UI workflows.
+We love contributions! To get started:
 
 1. Fork the repo and create a feature branch.
-2. Implement your changes with tests where possible.
-3. Run `npm run compile` and any relevant checks.
-4. Submit a PR describing your changes and any follow-up work.
+2. Implement your changes with tests or demos where possible.
+3. Run `npm run compile` (and `npm run lint` if you have ESLint configured).
+4. Open a PR summarising the change and any follow-up ideas.
 
 ## 📜 License
 
