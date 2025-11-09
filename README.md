@@ -90,7 +90,7 @@ The command emits a `.vsix` bundle you can share or publish.
 3. Review approvals for file edits or terminal commands. Cogent always waits for confirmation before risky actions.
 4. Inspect telemetry logs under `.cogent/audit.log` when you need to trace behaviour.
 
-## 🤝 Contributing
+### Enabling Code-Execution Workflows
 
 We welcome improvements! Please open issues or pull requests if you have suggestions for planner prompts, new tools, sandbox improvements, or UI workflows.
 
