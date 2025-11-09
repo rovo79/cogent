@@ -23,6 +23,12 @@
     ],
     "main": "./out/extension.js",
     "contributes": {
+        "commands": [
+            {
+                "command": "cogent.refactorHotspots",
+                "title": "Cogent: Refactor Hotspots"
+            }
+        ],
         "configuration": {
             "title": "Cogent",
             "properties": {
@@ -65,13 +71,13 @@
                         "applyDiff": false
                     },
                     "description": "Configure which tools should auto-confirm their operations without showing confirmation dialog",
-                    "order": 2
+                    "order": 9
                 },
                 "cogent.debug": {
                     "type": "boolean",
                     "default": false,
                     "description": "Enable debug logging in the output channel",
-                    "order": 3
+                    "order": 10
                 },
                 "cogent.commandTimeout": {
                     "type": "number",
@@ -296,7 +302,8 @@
         "watch": "tsc -watch -p ./",
         "pretest": "npm run compile && npm run lint",
         "lint": "eslint src",
-        "test": "vscode-test"
+        "test": "vscode-test",
+        "test:unit": "npm run compile && mocha \"out/test/**/*.test.js\""
     },
     "dependencies": {
         "@vscode/prompt-tsx": "^0.3.0-alpha.12"
@@ -310,6 +317,7 @@
         "eslint": "^9.13.0",
         "typescript": "^5.6.3",
         "@vscode/test-cli": "^0.0.10",
-        "@vscode/test-electron": "^2.4.1"
+        "@vscode/test-electron": "^2.4.1",
+        "mocha": "^10.7.3"
     }
 }
