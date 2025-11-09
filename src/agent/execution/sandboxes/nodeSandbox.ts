@@ -1,169 +1,144 @@
 import { spawn } from 'child_process';
+import { promises as fs } from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { randomUUID } from 'crypto';
 
-const DEFAULT_TIMEOUT_MS = 8_000;
-const MEMORY_FLAG = '--max-old-space-size=64';
-const OUTPUT_LIMIT = 512;
+const REQUIRE_RE = /require\(['"]([^'"()]+)['"]\)/g;
+const IMPORT_RE = /from\s+['"]([^'"()]+)['"]/g;
 
 export interface NodeSandboxOptions {
     code: string;
     cwd: string;
     env: Record<string, string>;
+    timeoutMs: number;
+    memoryLimitMb: number;
+    allowedModules: string[];
+    maxOutputBytes: number;
 }
 
 export interface NodeSandboxResult {
     stdout: string;
     stderr: string;
     exitCode: number;
+    timedOut: boolean;
+    truncated: boolean;
 }
 
 export async function runInNodeSandbox(options: NodeSandboxOptions): Promise<NodeSandboxResult> {
-    const runtime = `
-const vm = require('vm');
-const fs = require('fs');
-const path = require('path');
-const allowed = new Set(['fs', 'path', 'crypto']);
-const enableNet = process.env.COGENT_ENABLE_NET === 'true';
-if (enableNet) {
-    allowed.add('net');
-}
-const baseDir = process.cwd();
+    enforceModuleAllowList(options.code, options.allowedModules);
 
-function resolveWithinBase(target) {
-    const resolved = path.resolve(baseDir, target);
-    if (!resolved.startsWith(baseDir)) {
-        throw new Error('Access outside sandbox boundary');
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cogent-node-'));
+    const scriptPath = path.join(tempDir, `${randomUUID()}.mjs`);
+    await fs.writeFile(scriptPath, options.code, 'utf8');
+
+    // Whitelist of safe environment variables to pass to the sandbox
+    const SAFE_ENV_VARS = ['PATH', 'HOME', 'TMPDIR', 'TEMP', 'USER', 'SHELL', 'LANG', 'NODE_PATH'];
+    const filteredEnv: Record<string, string> = {};
+    for (const key of SAFE_ENV_VARS) {
+        if (process.env[key] !== undefined) {
+            filteredEnv[key] = process.env[key] as string;
+        }
     }
-    return resolved;
-}
-
-const jailedFs = {
-    readFileSync(file, encoding) {
-        return fs.readFileSync(resolveWithinBase(file), encoding);
-    },
-    writeFileSync(file, data, encoding) {
-        return fs.writeFileSync(resolveWithinBase(file), data, encoding);
-    },
-    readdirSync(dir, options) {
-        return fs.readdirSync(resolveWithinBase(dir), options);
-    },
-    statSync(target, options) {
-        return fs.statSync(resolveWithinBase(target), options);
-    },
-    promises: {
-        readFile(file, encoding) {
-            return fs.promises.readFile(resolveWithinBase(file), encoding);
-        },
-        writeFile(file, data, encoding) {
-            return fs.promises.writeFile(resolveWithinBase(file), data, encoding);
-        },
-        readdir(dir, options) {
-            return fs.promises.readdir(resolveWithinBase(dir), options);
-        },
-        stat(target, options) {
-            return fs.promises.stat(resolveWithinBase(target), options);
-        },
-    },
-};
-
-function sandboxRequire(name) {
-    if (!allowed.has(name)) {
-        throw new Error('Module not allowed: ' + name);
-    }
-    if (name === 'fs') {
-        return jailedFs;
-    }
-    if (name === 'path') {
-        return require('path');
-    }
-    if (name === 'crypto') {
-        return require('crypto');
-    }
-    if (name === 'net' && enableNet) {
-        return require('net');
-    }
-    throw new Error('Module not allowed: ' + name);
-}
-
-const sandboxConsole = {
-    log: (...args) => console.log(...args),
-    error: (...args) => console.error(...args),
-    warn: (...args) => console.warn(...args),
-};
-
-const sandbox = {
-    require: sandboxRequire,
-    console: sandboxConsole,
-    process: {
-        env: {},
-        cwd: () => baseDir,
-    },
-    Buffer,
-    setTimeout,
-    clearTimeout,
-    setInterval,
-    clearInterval,
-};
-
-const source = Buffer.from(process.env.COGENT_CODE, 'base64').toString('utf8');
-
-try {
-    vm.runInNewContext(source, sandbox, { timeout: ${DEFAULT_TIMEOUT_MS} });
-    process.exit(0);
-} catch (error) {
-    const message = error && error.stack ? error.stack : String(error);
-    console.error(message);
-    process.exit(1);
-}
-`;
-
     return new Promise<NodeSandboxResult>((resolve, reject) => {
-        const child = spawn('node', [MEMORY_FLAG, '-e', runtime], {
+        const args = [`--max-old-space-size=${options.memoryLimitMb}`, scriptPath];
+        const child = spawn('node', args, {
             cwd: options.cwd,
-            env: {
-                ...process.env,
-                ...options.env,
-                COGENT_CODE: Buffer.from(options.code, 'utf8').toString('base64'),
-            },
+            env: { ...filteredEnv, ...options.env },
             stdio: ['ignore', 'pipe', 'pipe'],
         });
 
         let stdout = '';
         let stderr = '';
-        let timeoutHandle: NodeJS.Timeout | undefined;
+        let truncated = false;
+        let timedOut = false;
 
-        const finalize = (code: number) => {
-            if (timeoutHandle) {
-                clearTimeout(timeoutHandle);
+        const limitStream = (buffer: string, chunk: Buffer): { value: string; truncated: boolean } => {
+            const combined = buffer + chunk.toString();
+            if (Buffer.byteLength(combined, 'utf8') <= options.maxOutputBytes) {
+                return { value: combined, truncated: false };
             }
-            resolve({
-                stdout: stdout.slice(0, OUTPUT_LIMIT),
-                stderr: stderr.slice(0, OUTPUT_LIMIT),
-                exitCode: code,
-            });
+            const limited = combined.slice(0, options.maxOutputBytes);
+            return { value: limited, truncated: true };
         };
 
-        timeoutHandle = setTimeout(() => {
-            stderr += `Execution timed out after ${DEFAULT_TIMEOUT_MS}ms`;
-            child.kill('SIGKILL');
-        }, DEFAULT_TIMEOUT_MS + 100);
-
         child.stdout.on('data', (chunk: Buffer) => {
-            stdout += chunk.toString();
+            const next = limitStream(stdout, chunk);
+            stdout = next.value;
+            truncated = truncated || next.truncated;
         });
 
         child.stderr.on('data', (chunk: Buffer) => {
-            stderr += chunk.toString();
+            const next = limitStream(stderr, chunk);
+            stderr = next.value;
+            truncated = truncated || next.truncated;
         });
 
-        child.on('close', (code) => {
-            finalize(typeof code === 'number' ? code : -1);
-        });
+        const timeout = setTimeout(() => {
+            timedOut = true;
+            child.kill('SIGKILL');
+        }, options.timeoutMs);
 
-        child.on('error', (error) => {
-            if (timeoutHandle) {
-                clearTimeout(timeoutHandle);
+        const cleanup = async () => {
+            clearTimeout(timeout);
+            try {
+                await fs.rm(scriptPath, { force: true });
+                await fs.rm(tempDir, { recursive: true, force: true });
+            } catch (error) {
+                // Swallow errors from cleanup to avoid masking primary failures.
             }
+        };
+
+        child.on('close', async (code) => {
+            await cleanup();
+            resolve({
+                stdout,
+                stderr,
+                exitCode: typeof code === 'number' ? code : -1,
+                timedOut,
+                truncated,
+            });
+        });
+
+        child.on('error', async (error) => {
+            await cleanup();
             reject(error);
         });
     });
+}
+
+function enforceModuleAllowList(code: string, allowed: string[]): void {
+    const allowSet = new Set(allowed);
+    const violations = new Set<string>();
+
+    const check = (match: RegExpExecArray | null) => {
+        if (!match) {
+            return;
+        }
+        const specifier = match[1];
+        if (specifier.startsWith('.') || specifier.startsWith('/')) {
+            return;
+        }
+        if (!allowSet.has(specifier)) {
+            violations.add(specifier);
+        }
+    };
+
+    let result: RegExpExecArray | null;
+    // eslint-disable-next-line no-cond-assign
+    while ((result = REQUIRE_RE.exec(code))) {
+        check(result);
+    }
+    REQUIRE_RE.lastIndex = 0;
+    // eslint-disable-next-line no-cond-assign
+    while ((result = IMPORT_RE.exec(code))) {
+        check(result);
+    }
+    IMPORT_RE.lastIndex = 0;
+
+    if (violations.size > 0) {
+        throw new Error(
+            `Sandboxed code attempted to import disallowed modules: ${Array.from(violations).join(', ')}`
+        );
+    }
 }

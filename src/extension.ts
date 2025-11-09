@@ -2,19 +2,20 @@ import * as vscode from 'vscode';
 import { registerToolUserChatParticipant } from './toolParticipant';
 import { FileReadTool, FileWriteTool, FileUpdateTool, CommandRunTool, ApplyDiffTool } from './tools';
 import { registerTool } from './mcp/registry';
-import { readFileTool } from './mcp/tools/files';
-import { prepareHotspotDiffTool, applyHotspotPatchTool } from './mcp/tools/demoHotspots';
+import { listDirectoryTool, readFileTool } from './mcp/tools/files';
 import { DiffView } from './components/DiffView';
 import { Logger } from './components/Logger';
-import { buildContextSummary } from './agent/context';
-import { DeterministicLLMClient, CompletionUsage } from './agent/demoLLM';
-import { makePlan } from './agent/planner';
-import { validatePlan, PlanValidationError } from './agent/planValidator';
-import { runPlan, ExecContext } from './agent/execution/execManager';
+import { runAgent } from './agent/agent';
+import { askApproval } from './ui/approvals';
+import { ExecutionPolicies, ExecEvent } from './agent/execution/execManager';
+import { PlanStep } from './agent/plans';
 
 export function activate(context: vscode.ExtensionContext) {
     const logger = Logger.getInstance();
     logger.info('Cogent extension is now active!');
+
+    const agentChannel = vscode.window.createOutputChannel('Cogent Agent');
+    context.subscriptions.push(agentChannel);
 
     // Register tools
     context.subscriptions.push(
@@ -27,94 +28,158 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Populate internal MCP registry
     registerTool(readFileTool);
-    registerTool(prepareHotspotDiffTool);
-    registerTool(applyHotspotPatchTool);
+    registerTool(listDirectoryTool);
 
     // Register the tool participant
     registerToolUserChatParticipant(context);
 
-    const deterministicLLM = new DeterministicLLMClient();
-
-    const demoCommand = vscode.commands.registerCommand('cogent.refactorHotspots', async () => {
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-        if (!workspaceFolder) {
-            void vscode.window.showErrorMessage('Cogent demo requires an open workspace.');
-            return;
-        }
-
-        const cwd = workspaceFolder.uri.fsPath;
-        const env = Object.fromEntries(
-            Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string')
-        );
-
-        try {
-            logger.info('Starting Cogent Refactor Hotspots demo command');
-            const summary = await buildContextSummary(cwd);
-            const summaryText = JSON.stringify(summary, null, 2);
-
-            let completionUsage: CompletionUsage | undefined;
-            const plan = await makePlan({
-                goal: 'Demonstrate deterministic hotspot refactor loop',
-                contextSummary: summaryText,
-                llm: async (prompt: string) => {
-                    const completion = await deterministicLLM.complete(prompt);
-                    completionUsage = completion.usage;
-                    return completion.text;
-                },
+    context.subscriptions.push(
+        vscode.commands.registerCommand('cogent.runPlan', async () => {
+            const goal = await vscode.window.showInputBox({
+                prompt: 'Enter the goal for Cogent to execute',
+                placeHolder: 'e.g. Audit workspace structure and summarize findings',
             });
+            if (!goal) {
+                return;
+            }
 
-            validatePlan(plan, {
-                maxSteps: 6,
-                maxTokenBudget: 400,
-                allowedTools: ['read_file', 'prepare_hotspot_diff', 'apply_hotspot_patch'],
-            });
+            const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+            if (!workspaceFolder) {
+                vscode.window.showErrorMessage('Cogent requires an open workspace');
+                return;
+            }
 
-            const execContext: ExecContext = {
-                cwd,
-                env,
-                approval: async (reason, preview) => {
-                    const detail = preview
-                        ? `${preview.slice(0, 1500)}${preview.length > 1500 ? '\n... (truncated)' : ''}`
-                        : undefined;
-                    const choice = await vscode.window.showInformationMessage(
-                        reason,
-                        { modal: true, detail },
-                        'Approve',
-                        'Reject'
-                    );
-                    return choice === 'Approve';
+            const model = await selectPlannerModel();
+            if (!model) {
+                vscode.window.showErrorMessage('No chat model is available for planning.');
+                return;
+            }
+
+            const config = vscode.workspace.getConfiguration('cogent');
+            const useFullWorkspace = config.get<boolean>('useFullWorkspace', false);
+            const autoApproveList = config.get<string[]>('autoApprove', []);
+            const autoApproveTools = new Set((autoApproveList ?? []).filter(Boolean));
+            const allowShell = config.get<boolean>('tools.allowShell', false);
+            const netAllowed = config.get<boolean>('tools.netAllowed', false);
+            const timeoutMs = config.get<number>('exec.timeoutMs', 120_000);
+            const memoryMb = config.get<number>('exec.memoryMb', 512);
+            const allowedModules = (config.get<string[]>('exec.allowedNodeModules') ?? [
+                'fs',
+                'path',
+                'os',
+                'crypto',
+                'util',
+            ]).filter(Boolean);
+
+            const policies: ExecutionPolicies = {
+                autoApproveTools,
+                allowRisks: {
+                    exec: allowShell,
+                    net: netAllowed,
                 },
-                writeUserMessage: (msg) => {
-                    logger.info(msg);
+                sandbox: {
+                    timeoutMs: Math.max(1000, timeoutMs),
+                    memoryLimitMb: Math.max(128, memoryMb),
+                    allowedModules,
+                    maxOutputBytes: 8 * 1024,
                 },
-                slots: new Map(),
             };
 
-            await runPlan(plan, execContext);
+            const contextOptions = useFullWorkspace
+                ? { maxFiles: 120, maxDepth: 3 }
+                : { maxFiles: 60, maxDepth: 2 };
 
-            if (completionUsage) {
-                logger.info(
-                    `LLM usage - prompt tokens: ${completionUsage.promptTokens}, response tokens: ${completionUsage.responseTokens}, latency: ${completionUsage.latencyMs}ms`
-                );
+            agentChannel.show(true);
+            agentChannel.appendLine(`Goal: ${goal}`);
+
+            const llm = async (prompt: string): Promise<string> => {
+                const messages: vscode.LanguageModelChatMessage[] = [
+                    {
+                        role: vscode.LanguageModelChatMessageRole.User,
+                        name: undefined,
+                        content: [new vscode.LanguageModelTextPart(prompt)],
+                    },
+                ];
+                const response = await model.sendRequest(messages, { justification: 'Cogent planner request' });
+                let text = '';
+                for await (const part of response.stream) {
+                    if (part instanceof vscode.LanguageModelTextPart) {
+                        text += part.value;
+                    }
+                }
+                return text;
+            };
+
+            const onEvent = (event: ExecEvent) => {
+                switch (event.type) {
+                    case 'plan-started':
+                        agentChannel.appendLine('Plan received.');
+                        break;
+                    case 'step-started':
+                        agentChannel.appendLine(`▶ Step ${event.index + 1}: ${describeStep(event.step)}`);
+                        break;
+                    case 'step-completed':
+                        agentChannel.appendLine(`✅ Step ${event.index + 1} complete: ${event.resultSummary}`);
+                        break;
+                    case 'step-failed':
+                        agentChannel.appendLine(`❌ Step ${event.index + 1} failed: ${event.error}`);
+                        break;
+                    case 'approval-requested':
+                        agentChannel.appendLine(`⚠️ Approval requested: ${event.request.reason}`);
+                        break;
+                    case 'plan-completed':
+                        agentChannel.appendLine('Plan completed.');
+                        break;
+                    default:
+                        break;
+                }
+            };
+
+            try {
+                await runAgent(goal, {
+                    cwd: workspaceFolder.uri.fsPath,
+                    llm,
+                    writeUserMessage: (message) => agentChannel.appendLine(message),
+                    approval: askApproval,
+                    policies,
+                    contextOptions,
+                    onEvent,
+                });
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                agentChannel.appendLine(`Agent failed: ${message}`);
+                vscode.window.showErrorMessage(`Cogent agent failed: ${message}`);
             }
-
-            void vscode.window.showInformationMessage('Cogent hotspot refactor demo completed successfully.');
-        } catch (error) {
-            let message = 'Unknown error';
-            if (error instanceof PlanValidationError) {
-                message = error.message;
-            } else if (error instanceof Error) {
-                message = error.message;
-            }
-            logger.error(`Hotspot demo failed: ${message}`);
-            void vscode.window.showErrorMessage(`Cogent hotspot refactor failed: ${message}`);
-        }
-    });
-
-    context.subscriptions.push(demoCommand);
+        })
+    );
 }
 
 export function deactivate() {
     Logger.getInstance().dispose();
     DiffView.dispose();
+}
+
+async function selectPlannerModel(): Promise<vscode.LanguageModelChat | undefined> {
+    const MODEL_SELECTOR: vscode.LanguageModelChatSelector = { vendor: 'copilot', family: 'claude-3.5-sonnet' };
+    let [model] = await vscode.lm.selectChatModels(MODEL_SELECTOR);
+    if (!model) {
+        [model] = await vscode.lm.selectChatModels({ vendor: 'copilot', family: 'gpt-4o' });
+    }
+    return model;
+}
+
+function describeStep(step: PlanStep): string {
+    switch (step.kind) {
+        case 'useTool':
+            return `use tool ${step.tool}`;
+        case 'execCode':
+            return `execute ${step.language} code`;
+        case 'askApproval':
+            return `request approval: ${step.reason}`;
+        case 'summarize':
+            return `summarize inputs (${step.inputs.length})`;
+        default: {
+            const _exhaustive: never = step;
+            return _exhaustive;
+        }
 }

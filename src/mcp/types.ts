@@ -23,5 +23,7 @@ export interface Tool {
     io: ToolIO;
     risk: ToolRisk;
     preferredMode?: 'MCP' | 'codeExec';
+    autoApprove?: boolean;
+    getApprovalPreview?: (args: Record<string, unknown>) => string | Promise<string>;
     run: (args: Record<string, unknown>, ctx: ToolContext) => Promise<unknown>;
 }

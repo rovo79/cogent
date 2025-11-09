@@ -1,6 +1,7 @@
-import { Plan } from './plans';
+import { Plan, PlanValidationError, validatePlan } from './plans';
 import { listTools } from '../mcp/registry';
 import { chooseExecMode } from './policies';
+import { recordAudit } from '../telemetry/audit';
 
 export interface PlannerOptions {
     goal: string;
@@ -17,6 +18,12 @@ export async function makePlan(opts: PlannerOptions): Promise<Plan> {
 
     const rawPlan = await opts.llm(prompt);
 
+    await recordAudit({
+        type: 'planner_prompt',
+        promptLength: prompt.length,
+        responseLength: rawPlan.length,
+    });
+
     let plan: Plan;
     try {
         plan = JSON.parse(rawPlan) as Plan;
@@ -24,6 +31,15 @@ export async function makePlan(opts: PlannerOptions): Promise<Plan> {
         throw new Error(`Failed to parse plan JSON: ${(error as Error).message}`);
     }
 
-    plan.steps = plan.steps.map((step, index) => chooseExecMode(step, index));
+    try {
+        plan = validatePlan(plan);
+    } catch (error) {
+        if (error instanceof PlanValidationError) {
+            throw new Error(`Plan did not pass validation: ${error.message}`);
+        }
+        throw error;
+    }
+
+    plan.steps = plan.steps.map((step) => chooseExecMode(step));
     return plan;
 }
