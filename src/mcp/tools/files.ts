@@ -2,16 +2,21 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { Tool } from '../types';
 
-function resolveWorkspacePath(cwd: string, target: string): { absolute: string; relative: string } {
+async function resolveWorkspacePath(
+    cwd: string,
+    target: string,
+): Promise<{ absolute: string; relative: string }> {
     const normalizedTarget = target.trim();
+    const workspaceRoot = await fs.realpath(cwd);
     const absolutePath = path.resolve(cwd, normalizedTarget);
-    const relativePath = path.relative(cwd, absolutePath);
+    const resolvedTarget = await fs.realpath(absolutePath);
+    const relativePath = path.relative(workspaceRoot, resolvedTarget);
 
     if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
         throw new Error(`Path ${normalizedTarget} escapes the workspace root`);
     }
 
-    return { absolute: absolutePath, relative: toPosix(relativePath || '.') };
+    return { absolute: resolvedTarget, relative: toPosix(relativePath || '.') };
 }
 
 function toPosix(value: string): string {
@@ -35,7 +40,7 @@ export const readFileTool: Tool = {
     preferredMode: 'MCP',
     async run(args, ctx) {
         const inputPath = typeof args.path === 'string' ? args.path : String(args.path);
-        const { absolute, relative } = resolveWorkspacePath(ctx.cwd, inputPath);
+        const { absolute, relative } = await resolveWorkspacePath(ctx.cwd, inputPath);
         ctx.writeUserMessage(`Reading file: ${relative}`);
         return fs.readFile(absolute, 'utf8');
     },
@@ -63,7 +68,7 @@ export const listDirectoryTool: Tool = {
     preferredMode: 'MCP',
     async run(args, ctx) {
         const target = args.path ? String(args.path) : '.';
-        const { absolute: root, relative } = resolveWorkspacePath(ctx.cwd, target);
+        const { absolute: root, relative } = await resolveWorkspacePath(ctx.cwd, target);
         const maxDepth = typeof args.depth === 'number' ? Math.max(0, Math.floor(Number(args.depth))) : 1;
         const MAX_RESULTS = 200;
         const results: Array<{ path: string; size: number }> = [];
@@ -79,6 +84,9 @@ export const listDirectoryTool: Tool = {
             const entries = await fs.readdir(current, { withFileTypes: true });
             for (const entry of entries) {
                 if (entry.name.startsWith('.git')) {
+                    continue;
+                }
+                if (entry.isSymbolicLink()) {
                     continue;
                 }
                 const full = path.join(current, entry.name);
